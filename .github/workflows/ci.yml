@@ -86,7 +86,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: msplat-cli
-          path: build/msplat
+          path: |
+            build/msplat
+            build/default.metallib
           if-no-files-found: error
           retention-days: 7
 

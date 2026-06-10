@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.2 — Pipeline-friendly CLI, resource governance, docs (unreleased)
+## v1.2.0 — Pipeline-friendly CLI, resource governance, docs (unreleased)
 
 Hardens the standalone binary into a well-behaved pipeline trainer (GSplata,
 OpenSplat-style harnesses) and adds the test/doc/benchmark scaffolding the project
