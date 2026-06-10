@@ -26,11 +26,11 @@ datasets/
 pip install -U "huggingface_hub[cli]"
 
 # Everything into ./datasets/
-huggingface-cli download alexmkwizu/gaussian_training_datasets \
+hf download alexmkwizu/gaussian_training_datasets \
     --repo-type dataset --local-dir datasets
 
 # Or just one scene
-huggingface-cli download alexmkwizu/gaussian_training_datasets \
+hf download alexmkwizu/gaussian_training_datasets \
     --repo-type dataset --include "mipnerf360/room/*" --local-dir datasets
 ```
 
@@ -58,6 +58,47 @@ msplat datasets/mipnerf360/garden -n 7000 -d 4 --eval
 msplat datasets/tandt/truck      -n 7000 -d 1 --eval
 ```
 
+## Pre-trained splats & viewing
+
+The same dataset repo ships ready-made `.ply` splats trained by msplat under
+`tested_outputs/` (7 Mip-NeRF 360 + Tanks & Temples + Deep Blending; indoor PSNR
+27–30, 7000 iters on an M4 / 16 GB). Download them:
+
+```bash
+hf download alexmkwizu/gaussian_training_datasets --repo-type dataset \
+    --include "tested_outputs/*" --local-dir .
+```
+
+They are standard 3DGS binary PLYs — **drag any `.ply` into a web viewer**:
+
+- **SuperSplat** — <https://superspl.at/editor> (no install; view, clean, and edit splats)
+- **antimatter15/splat** — <https://antimatter15.com/splat/> (expects the `.splat` format;
+  produce one with `msplat <scene> -o out.splat`)
+
+You can also render from any camera pose programmatically via the Python
+(`render_from_pose`) or Swift (`renderFromPose`) API. Per-scene metrics and the
+exact training settings are in `tested_outputs/SUMMARY.md`; the full analysis
+(including why the small-image datasets need `-d 1`) is in `tested_outputs/RESULTS.md`.
+
+### Pushing your own trained splats (through `hf`)
+
+After training a scene, upload the resulting `.ply` to the `tested_outputs/` folder
+of the dataset repo. Authenticate once (`hf auth login`, needs write access), then:
+
+```bash
+# a single splat → tested_outputs/myscene.ply
+hf upload alexmkwizu/gaussian_training_datasets out.ply tested_outputs/myscene.ply \
+    --repo-type dataset
+
+# or a whole local output directory → tested_outputs/ (uploads every file in it)
+hf upload alexmkwizu/gaussian_training_datasets my_outputs tested_outputs \
+    --repo-type dataset --commit-message "Add myscene splat"
+```
+
+`.ply`/`.splat` blobs are large — they go to Git-LFS automatically (the repo's
+`.gitattributes` already tracks them). `hf` resumes interrupted uploads (already-pushed
+LFS objects are skipped server-side). Don't `git add` outputs into the msplat repo.
+
 ## Adding a new dataset and pushing it to Hugging Face
 
 1. Place the scene under `datasets/<group>/<scene>/` in COLMAP layout
@@ -67,11 +108,11 @@ msplat datasets/tandt/truck      -n 7000 -d 1 --eval
    ```
 2. Authenticate once (needs write access to the dataset repo):
    ```bash
-   huggingface-cli login
+   hf auth login
    ```
 3. Upload it (path-in-repo mirrors the local path):
    ```bash
-   huggingface-cli upload alexmkwizu/gaussian_training_datasets \
+   hf upload alexmkwizu/gaussian_training_datasets \
        datasets/<group>/<scene> <group>/<scene> --repo-type dataset
    ```
 

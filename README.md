@@ -6,7 +6,10 @@ The entire training pipeline: projection, sorting, rasterization, SSIM loss, bac
 
 The result is a self-contained engine that trains a full-resolution Mip-NeRF 360 scene in ~70 seconds and renders it at ~350 FPS on an M4 Max.
 
-Python and Swift bindings are provided, as well as a standalone C++ CLI.
+Python and Swift bindings are provided, as well as a standalone C++ CLI built for
+automated pipelines: streaming machine-readable progress, quality presets, a hard
+splat/memory cap, deterministic exit codes, and clean `SIGINT`/`SIGTERM` handling —
+it trains comfortably on a base **M4 / 16 GB** MacBook Pro.
 
 <div align="center">
   <video src="https://github.com/user-attachments/assets/cb942a38-cf6a-4b06-9899-675396550c57" />
@@ -116,8 +119,8 @@ msplat path/to/scene --preset balanced --progress-format jsonl --max-splats 3000
 Progress lines stream line-buffered even when piped; `SIGINT`/`SIGTERM` save a
 partial `*_interrupted.ply` and exit 130/143; exit codes are deterministic
 (0 ok · 3 load · 5 write). Defaults to a **black** background (`--debug-bg` for the
-magenta debug view). Full reference: `man docs/msplat.1`. Pipeline integration
-contract: [`gsplata_integration.md`](gsplata_integration.md).
+magenta debug view). The CLI is OpenSplat-compatible (positional path + additive
+flags), so it drops into existing 3DGS pipelines. Full reference: `man docs/msplat.1`.
 
 ### Swift
 
@@ -200,20 +203,20 @@ Training scenes live in a Hugging Face dataset, not in this repo:
 (Mip-NeRF 360, Tanks & Temples, Deep Blending — COLMAP layout). A small `garden`
 scene is included in-repo for quickstart/CI.
 
-Create a `datasets/` folder and download everything from Hugging Face:
+Create a `datasets/` folder and download everything from Hugging Face (uses the
+`hf` CLI from `huggingface_hub`):
 
 ```bash
 pip install -U "huggingface_hub[cli]"
-huggingface-cli download alexmkwizu/gaussian_training_datasets \
-    --repo-type dataset --local-dir datasets
+hf download alexmkwizu/gaussian_training_datasets --repo-type dataset --local-dir datasets
 # → datasets/mipnerf360/<scene>/, datasets/tandt/<scene>/, datasets/db/<scene>/
 ```
 
 Grab a single scene instead of everything:
 
 ```bash
-huggingface-cli download alexmkwizu/gaussian_training_datasets \
-    --repo-type dataset --include "tandt/truck/*" --local-dir datasets
+hf download alexmkwizu/gaussian_training_datasets --repo-type dataset \
+    --include "tandt/truck/*" --local-dir datasets
 msplat datasets/tandt/truck -n 7000 --eval        # small images → train at native -d 1
 ```
 
@@ -228,14 +231,56 @@ are cached locally and pulled from Hugging Face, never committed to this repo.
 ### Adding a new dataset (push to Hugging Face)
 
 Put the scene under `datasets/<group>/<scene>/` (COLMAP `sparse/0/` + `images/`),
-then upload it to the dataset repo (needs write access — `huggingface-cli login`):
+then upload it to the dataset repo (needs write access — `hf auth login`):
 
 ```bash
-huggingface-cli upload alexmkwizu/gaussian_training_datasets \
+hf upload alexmkwizu/gaussian_training_datasets \
     datasets/tandt/mynewscene tandt/mynewscene --repo-type dataset
 ```
 
 Do **not** `git add` datasets into this repo — they belong on Hugging Face.
+
+### Pre-trained splats — download, view & push
+
+Ready-made `.ply` splats trained by msplat (7 Mip-NeRF 360 + Tanks & Temples +
+Deep Blending scenes, indoor PSNR 27–30) live under `tested_outputs/` in the same
+dataset repo:
+
+```bash
+hf download alexmkwizu/gaussian_training_datasets --repo-type dataset \
+    --include "tested_outputs/*" --local-dir .
+```
+
+These are standard 3DGS PLYs — **drag any `.ply` into a web viewer** to inspect:
+
+- **SuperSplat** — <https://superspl.at/editor> (no install; also cleans/edits splats)
+- **antimatter15/splat** — <https://antimatter15.com/splat/> (expects `.splat`; produce one
+  with `msplat <scene> -o out.splat`, or export from your own training run)
+
+Or render from any pose with the Python/Swift API (`render_from_pose`). Per-scene
+metrics + how each was trained: `tested_outputs/SUMMARY.md`.
+
+**Push your own trained splats** (through `hf`; needs write access — `hf auth login`):
+
+```bash
+# one file
+hf upload alexmkwizu/gaussian_training_datasets out.ply tested_outputs/myscene.ply \
+    --repo-type dataset
+# or a whole local output folder → tested_outputs/
+hf upload alexmkwizu/gaussian_training_datasets my_outputs tested_outputs \
+    --repo-type dataset --commit-message "Add myscene splat"
+```
+
+## Documentation
+
+- [`docs/`](docs/) — [getting started](docs/user/getting-started.md),
+  [datasets](docs/datasets.md), [building & testing](docs/dev/building-and-testing.md),
+  [internals](docs/dev/internals.md), and the
+  [optimization roadmap](docs/dev/optimization-roadmap.md).
+- **`man docs/msplat.1`** — full CLI reference: every flag, exit codes, signals,
+  environment variables, and examples.
+- [`docs/benchmarks/`](docs/benchmarks/) — dated measurement ledger (per-stage GPU
+  profile, memory footprint) on a base M4 / 16 GB.
 
 ## Benchmarks
 
@@ -278,6 +323,20 @@ gsplat numbers from [docs.gsplat.studio](https://docs.gsplat.studio/main/tests/e
 | garden 30K | 1039s | 700s | 1.48x |
 
 v1.1.3 fuses SH backward gradients into Adam optimizer updates, fuses the SSIM vertical-forward and horizontal-backward passes into a single kernel, and replaces the count→prefix-sum→scatter intersection pipeline with pre-allocated per-tile bins. Speedup scales with gaussian count.
+
+### Validated on a base M4 / 16 GB
+
+The full dataset suite (all 7 Mip-NeRF 360 + Tanks & Temples + Deep Blending) trains
+end-to-end on a 16 GB MacBook Pro (M4). Indoor scenes reach PSNR 27–30; resident
+memory stays ~2–8 GB. Choose `--downscale-factor` by native image size (Mip-NeRF 360
+~16 MP → `-d 4`; Tanks & Temples / Deep Blending ~1 MP → `-d 1`) — over-downscaling
+small images destabilizes training, and the CLI warns when the render is too small.
+Full-resolution Mip-NeRF (`-d 1`) needs more than 16 GB (images are decoded
+up-front). See [`docs/benchmarks/`](docs/benchmarks/) and [`docs/datasets.md`](docs/datasets.md).
+
+> **v1.2** adds the pipeline-friendly CLI (progress/jsonl, presets, `--max-splats`,
+> signals, exit codes, man page, completions) and robustness fixes (resume-step,
+> PLY validation, coarse-render warning, NaN guard) — no change to training speed.
 
 ## License
 

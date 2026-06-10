@@ -46,7 +46,7 @@ Temples, Deep Blending), create a `datasets/` folder and download from Hugging F
 
 ```bash
 pip install -U "huggingface_hub[cli]"
-huggingface-cli download alexmkwizu/gaussian_training_datasets \
+hf download alexmkwizu/gaussian_training_datasets \
     --repo-type dataset --local-dir datasets
 ```
 
