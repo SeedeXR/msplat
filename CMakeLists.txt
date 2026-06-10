@@ -114,6 +114,33 @@ target_link_libraries(msplat PRIVATE
 )
 target_compile_definitions(msplat PRIVATE USE_MPS)
 install(TARGETS msplat DESTINATION bin)
+install(FILES ${CMAKE_SOURCE_DIR}/docs/msplat.1 DESTINATION share/man/man1)
+install(FILES ${CMAKE_SOURCE_DIR}/scripts/completions/msplat.bash
+        DESTINATION share/bash-completion/completions RENAME msplat)
+install(FILES ${CMAKE_SOURCE_DIR}/scripts/completions/_msplat
+        DESTINATION share/zsh/site-functions)
+
+# --- C++ unit tests (doctest, header-only; no GPU/dataset required) ---
+
+option(MSPLAT_BUILD_TESTS "Build C++ unit tests" ON)
+
+if(MSPLAT_BUILD_TESTS)
+    FetchContent_Declare(doctest
+        URL https://github.com/doctest/doctest/archive/refs/tags/v2.4.11.zip)
+    # doctest 2.4.11 ships a pre-3.5 cmake_minimum_required that CMake 4.x rejects;
+    # this scoped override lets its (header-only) project configure anyway.
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
+    FetchContent_MakeAvailable(doctest)
+    unset(CMAKE_POLICY_VERSION_MINIMUM CACHE)
+
+    add_executable(msplat_tests tests/cpp/test_units.cpp)
+    # Pure-logic tests: only the header helpers, no msplat_core / Metal link.
+    target_include_directories(msplat_tests PRIVATE ${CMAKE_SOURCE_DIR}/core/include)
+    target_link_libraries(msplat_tests PRIVATE doctest::doctest)
+
+    enable_testing()
+    add_test(NAME msplat_unit_tests COMMAND msplat_tests)
+endif()
 
 # --- Python bindings (optional, enabled when building via scikit-build-core) ---
 

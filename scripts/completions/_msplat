@@ -1,0 +1,46 @@
+#compdef msplat
+# zsh completion for msplat. Install to a directory on $fpath (e.g.
+# $(brew --prefix)/share/zsh/site-functions/_msplat). Maintained by hand to match
+# `msplat --help` (CLI11 2.4.2 has no completion generator).
+
+_msplat() {
+  _arguments -s \
+    '(-h --help)'{-h,--help}'[show help and exit]' \
+    '--version[show version and exit]' \
+    '(-o --output)'{-o,--output}'[output scene path]:file:_files' \
+    '(-s --save-every)'{-s,--save-every}'[checkpoint cadence in steps]:N:' \
+    '--resume[resume from a PLY]:file:_files -g "*.ply"' \
+    '--val[withhold a camera for validation]' \
+    '--val-image[validation image filename]:name:' \
+    '--val-render[render validation views to dir]:dir:_files -/' \
+    '--eval[evaluate on held-out views]' \
+    '--test-every[hold out every Nth view]:N:' \
+    '(-n --num-iters)'{-n,--num-iters}'[training iterations]:N:' \
+    '(-d --downscale-factor)'{-d,--downscale-factor}'[image downscale factor]:F:' \
+    '--num-downscales[progressive-resolution levels]:K:' \
+    '--resolution-schedule[steps between resolution bumps]:N:' \
+    '--sh-degree[max SH degree 0-4]:D:' \
+    '--sh-degree-interval[steps between SH-degree increases]:N:' \
+    '--ssim-weight[SSIM vs L1 blend]:W:' \
+    '--refine-every[densify/prune cadence]:N:' \
+    '--warmup-length[steps before densification]:N:' \
+    '--reset-alpha-every[opacity-reset cadence in refines]:N:' \
+    '--densify-grad-thresh[split/clone gradient threshold]:T:' \
+    '--densify-size-thresh[split vs clone size threshold]:T:' \
+    '--stop-screen-size-at[stop screen-size splits after N]:N:' \
+    '--split-screen-size[screen-space split threshold]:S:' \
+    '--keep-crs[retain input coordinate system]' \
+    '--colmap-image-path[override COLMAP image dir]:dir:_files -/' \
+    '--bg-color[background RGB (3 floats)]:R G B:' \
+    '--debug-bg[magenta debug background]' \
+    '--preset[quality preset]:preset:(draft balanced production)' \
+    '--max-splats[hard gaussian cap]:N:' \
+    '--memory-budget[advisory memory budget in GB]:GB:' \
+    '--progress-every[progress cadence in steps]:N:' \
+    '--progress-format[progress line format]:format:(plain jsonl)' \
+    '--quiet[suppress progress and per-event logs]' \
+    '--verbose[verbose logging]' \
+    '*:dataset:_files -/'
+}
+
+_msplat "$@"

@@ -42,6 +42,8 @@ jobs:
     name: C++ CLI
     runs-on: macos-15
     needs: version-check
+    env:
+      VERSION: ${{ needs.version-check.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -53,13 +55,32 @@ jobs:
 
       - name: Build
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DMSPLAT_BUILD_TESTS=ON
           cmake --build build -j
+
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package self-contained tarball
+        run: |
+          # The CLI loads default.metallib from beside the binary at runtime, so it
+          # MUST ship alongside it. Bundle the man page + shell completions too.
+          PKG="msplat-${VERSION}-macos-arm64"
+          mkdir -p "dist/$PKG"
+          cp build/msplat "dist/$PKG/"
+          cp build/default.metallib "dist/$PKG/"
+          cp docs/msplat.1 "dist/$PKG/"
+          cp -r scripts/completions "dist/$PKG/"
+          (cd dist && tar -czf "$PKG.tar.gz" "$PKG")
+          echo "packaged dist/$PKG.tar.gz:"; tar -tzf "dist/$PKG.tar.gz"
 
       - uses: actions/upload-artifact@v4
         with:
           name: release-cli
-          path: build/msplat
+          path: |
+            dist/msplat-*-macos-arm64.tar.gz
+            build/msplat
+            build/default.metallib
           if-no-files-found: error
 
   build-python:
@@ -156,7 +177,9 @@ jobs:
           name: v${{ env.VERSION }}
           generate_release_notes: true
           files: |
-            artifacts/release-cli/msplat
+            artifacts/release-cli/dist/msplat-*-macos-arm64.tar.gz
+            artifacts/release-cli/build/msplat
+            artifacts/release-cli/build/default.metallib
             artifacts/release-xcframework/MsplatCore.xcframework.zip
             artifacts/release-wheel-py3.12/*.whl
             artifacts/release-wheel-py3.13/*.whl

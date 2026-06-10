@@ -1,0 +1,252 @@
+.\" man page for msplat — Metal-native 3D Gaussian Splatting trainer
+.TH MSPLAT 1 "2026-06-10" "msplat 1.2" "User Commands"
+.SH NAME
+msplat \- train a 3D Gaussian Splatting scene on Apple Silicon (Metal)
+.SH SYNOPSIS
+.B msplat
+.I input
+.RI [ options ]
+.SH DESCRIPTION
+.B msplat
+trains a 3D Gaussian Splatting (3DGS) scene from a photogrammetry capture and
+writes a standard 3DGS binary PLY. The entire pipeline \(em projection,
+tile binning, sorting, rasterization, SSIM/L1 loss, backward pass, Adam, and
+densification \(em runs as fused Metal compute kernels. There is no CUDA and no
+PyTorch dependency; the only requirements are macOS 14+ and an Apple Silicon GPU.
+.PP
+.I input
+is the project root of a dataset (the directory that \fIcontains\fR
+.B sparse/
+and
+.BR images/ ,
+not
+.BR sparse/0/ ).
+The dataset format is auto-detected.
+.SH INPUT FORMATS
+.TP
+.B COLMAP
+.I input\fR/sparse/0/\fR{cameras,images,points3D}.bin (or .txt) and
+.IR input \fR/images/.
+A flat layout with the model files at the root is also accepted. Use
+.B \-\-colmap\-image\-path
+to point at images stored elsewhere. Pinhole, simple\-radial, radial and OpenCV
+camera models are supported; Brown\-Conrady distortion is undistorted on load.
+.TP
+.B Nerfstudio
+.IR input \fR/transforms.json (+ images; optional \fBply_file_path\fR point cloud).
+.TP
+.B Polycam
+.IR input \fR/keyframes/corrected_cameras/ + corrected_images/, or a single
+.IR input \fR/cameras.json.
+.SH OUTPUT
+A binary\-little\-endian PLY at
+.B \-o
+with the canonical 3DGS property set:
+.B x y z nx ny nz f_dc_0..2 f_rest_0..44 opacity scale_0..2 rot_0..3.
+Scales are stored in log space and opacity pre\-sigmoid; quaternions are
+[w x y z]. A
+.B cameras.json
+is written alongside the output. The
+.B .splat
+extension selects the compact splat format instead of PLY. Use
+.B \-\-save\-every
+to also write periodic checkpoints named
+.IR stem _ STEP .ext.
+.SH OPTIONS
+.SS General
+.TP
+.B \-h, \-\-help
+Print help and exit.
+.TP
+.B \-\-version
+Print version (with git revision) and exit.
+.TP
+.BI \-o,\ \-\-output \ PATH
+Output scene path (default
+.BR splat.ply ).
+.TP
+.BI \-s,\ \-\-save\-every \ N
+Write a checkpoint every N steps (default \-1, disabled).
+.TP
+.BI \-\-resume \ PLY
+Resume training from a PLY, continuing the iteration/LR/densification schedule.
+.TP
+.B \-\-keep\-crs
+Retain the input coordinate reference system in the output.
+.TP
+.BI \-\-colmap\-image\-path \ DIR
+Override the COLMAP image directory.
+.SS Training
+.TP
+.BI \-n,\ \-\-num\-iters \ N
+Training iterations, 1\(en1000000 (default 30000).
+.TP
+.BI \-d,\ \-\-downscale\-factor \ F
+Image downscale factor, 1.0\(en32.0 (default 1.0).
+.TP
+.BI \-\-num\-downscales \ K
+Progressive\-resolution levels (default 2).
+.TP
+.BI \-\-resolution\-schedule \ N
+Steps between resolution bumps (default 3000).
+.TP
+.BI \-\-sh\-degree \ D
+Maximum spherical\-harmonics degree, 0\(en4 (default 3).
+.TP
+.BI \-\-sh\-degree\-interval \ N
+Steps between SH\-degree increases (default 1000).
+.TP
+.BI \-\-ssim\-weight \ W
+SSIM vs L1 blend, 0.0\(en1.0 (default 0.2; 0 = pure L1).
+.TP
+.BI \-\-preset \ NAME
+Apply a quality preset before other flags:
+.B draft
+(\-n 7000 \-d 2 \-\-sh\-degree 2 \-\-max\-splats 1000000),
+.B balanced
+(\-n 30000 \-\-max\-splats 3000000),
+.B production
+(\-n 100000 \-\-max\-splats 6000000).
+Any flag you set explicitly overrides the preset.
+.SS Densification
+.TP
+.BI \-\-refine\-every \ N
+Densify/prune cadence (default 100).
+.TP
+.BI \-\-warmup\-length \ N
+Steps before densification starts (default 500).
+.TP
+.BI \-\-reset\-alpha\-every \ N
+Opacity\-reset cadence in refines (default 30).
+.TP
+.BI \-\-densify\-grad\-thresh \ T
+Positional\-gradient split threshold (default 0.0002).
+.TP
+.BI \-\-densify\-size\-thresh \ T
+Size threshold for split vs clone (default 0.01).
+.TP
+.BI \-\-stop\-screen\-size\-at \ N
+Stop screen\-size splits after N steps (default 4000).
+.TP
+.BI \-\-split\-screen\-size \ S
+Screen\-space split threshold (default 0.05).
+.SS Resources
+.TP
+.BI \-\-max\-splats \ N
+Hard cap on gaussian count (0 = unlimited). At or above the cap the densify pass
+prunes only (growth is disabled), bounding peak unified memory on shared machines.
+.TP
+.BI \-\-memory\-budget \ GB
+Advisory unified\-memory budget; derives
+.B \-\-max\-splats
+when that is not set explicitly (heuristic ~900 B/splat, 55% usable).
+.SS Output / background
+.TP
+.BI \-\-bg\-color \ "R G B"
+Training background, each 0\(en1 (default black). Black matches typical viewers
+and pipelines.
+.TP
+.B \-\-debug\-bg
+Use a magenta debug background that highlights under\-reconstructed regions.
+Ignored if
+.B \-\-bg\-color
+is given.
+.SS Progress / verbosity
+.TP
+.BI \-\-progress\-every \ N
+Emit a progress line every N steps, 0 = off (default 100). Lines are flushed per
+write and are not gated on a TTY, so they stream when piped.
+.TP
+.BI \-\-progress\-format \ FMT
+.B plain
+(default):
+.RB \[dq] step=i/n\ splats=C\ loss=L\ ms/it=T \[dq];
+.B jsonl
+:
+.RB \[dq] {\[dq]step\[dq]:i,...} \[dq].
+.TP
+.B \-\-quiet
+Suppress progress and per\-event logs (errors still shown).
+.TP
+.B \-\-verbose
+Verbose logging.
+.SS Evaluation / validation
+.TP
+.B \-\-eval
+Evaluate on held\-out test views; prints per\-view and mean PSNR/SSIM/L1.
+.TP
+.BI \-\-test\-every \ N
+Hold out every Nth view, 2\(en100 (default 8).
+.TP
+.B \-\-val
+Withhold one camera for validation.
+.TP
+.BI \-\-val\-image \ NAME
+Validation image filename (default random).
+.TP
+.BI \-\-val\-render \ DIR
+Render the validation view to DIR every 10 steps.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 3
+Dataset load failure (unrecognized format, missing files).
+.TP
+.B 4
+GPU/Metal initialization failure (reserved).
+.TP
+.B 5
+Output write failure.
+.TP
+.B 130 / 143
+Interrupted by SIGINT / SIGTERM. The in\-flight iteration completes, a partial
+scene is written to
+.IR stem _interrupted.ext ,
+and the process exits.
+.TP
+.B >=100
+Argument/validation error (CLI11 conventions).
+.SH SIGNALS
+.B SIGINT
+and
+.B SIGTERM
+trigger a clean shutdown with a partial save (see EXIT STATUS).
+.B SIGSTOP / SIGCONT
+pause and resume the process (handled by the OS).
+.SH ENVIRONMENT
+.TP
+.B BENCHMARK
+If set, print per\-iteration timing statistics after training.
+.TP
+.B PROFILE_GPU
+If set (with BENCHMARK), add GPU command\-buffer timing.
+.TP
+.B PROFILE_STAGES
+If set (with BENCHMARK), add per\-kernel\-stage GPU timing.
+.SH EXAMPLES
+Train at full resolution with held\-out evaluation:
+.PP
+.RS
+.B msplat ./scene \-n 7000 \-\-eval
+.RE
+.PP
+Pipeline use (black background, streaming JSONL progress, bounded memory):
+.PP
+.RS
+.B msplat ./scene \-\-preset balanced \-\-bg\-color 0 0 0 \-\-progress\-format jsonl \-\-max\-splats 3000000 \-o /out/scene.ply
+.RE
+.PP
+Profile per\-kernel GPU time:
+.PP
+.RS
+.B BENCHMARK=1 PROFILE_STAGES=1 msplat ./scene \-n 1500 \-d 2
+.RE
+.SH SEE ALSO
+Project documentation under
+.BR docs/ ,
+the integration contract in
+.BR gsplata_integration.md .
+.SH LICENSE
+Apache\-2.0.

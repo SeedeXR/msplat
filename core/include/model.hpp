@@ -71,6 +71,9 @@ struct Model{
   MTensor radii;
   int lastHeight;
   int lastWidth;
+  float lastLoss = 0.0f;   // loss from the most recent fullIteration (lagged, sync-free)
+  int maxSplats = 0;       // hard cap on gaussian count (0 = unlimited); see afterTrain()
+  bool quiet = false;      // suppress periodic stdout logs (Densified / opacity reset)
 
   MTensor xysGradNorm;
   MTensor visCounts;

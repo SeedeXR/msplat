@@ -1,5 +1,72 @@
 # Changelog
 
+## v1.2 — Pipeline-friendly CLI, resource governance, docs (unreleased)
+
+Hardens the standalone binary into a well-behaved pipeline trainer (GSplata,
+OpenSplat-style harnesses) and adds the test/doc/benchmark scaffolding the project
+lacked. No change to the training math — the kernels are byte-for-byte v1.1.3.
+
+**Process contract (observable & controllable)**
+- **Streaming progress** on stdout, line-buffered and **off-TTY** (so it shows when
+  piped): `--progress-every N` (default 100) →
+  `step=i/n splats=C loss=L ms/it=T`, with `--progress-format {plain,jsonl}` for a
+  parser-stable variant. The reported loss is real (a cheap pipeline drain at each
+  progress cadence; <1% overhead).
+- **Final summary line**: `Done: <n> iters, <count> Gaussians, PSNR <x>, wrote <abs>`.
+- **Signal handling**: `SIGINT`/`SIGTERM` finish the in-flight iteration, write
+  `<output>_interrupted.ply`, and exit 130/143. `SIGSTOP`/`SIGCONT` via the OS.
+- **Deterministic exit codes**: 0 ok · 3 dataset-load · 5 write · 130/143 signals.
+- `--quiet` / `--verbose`.
+
+**Resource governance (runs well on a base M4 / 16 GB)**
+- **`--max-splats N`** hard cap — above the cap the densify pass prunes only
+  (growth disabled by raising the effective gradient threshold), bounding peak
+  unified memory with no kernel change. Validated: cap 50k converges to 46,799
+  vs 100,883 uncapped (garden, `-n 2000 -d 4`).
+- **`--memory-budget GB`** advisory → derives `--max-splats`.
+- **Default `--bg-color` is now black** (pipeline-safe; matches viewers). The old
+  magenta debug background is available via **`--debug-bg`**. *Measured: black vs
+  magenta are within noise on garden 7K (24.98 vs 24.95 PSNR), so the default change
+  has no meaningful quality cost.*
+
+**UX & packaging**
+- **`--preset {draft,balanced,production}`** (7000/-d2/sh2 · 30000 · 100000, with
+  matching `--max-splats`); explicit flags override the preset. Grouped `--help`.
+- **`man` page** `docs/msplat.1`, installed to `share/man/man1`.
+- **Shell completions** (bash + zsh) in `scripts/completions/`, installed by
+  `cmake --install` to `share/bash-completion/completions` and
+  `share/zsh/site-functions`; complete enum values for `--preset`/`--progress-format`
+  and paths for file/dir flags.
+
+**Tests, build, docs**
+- **C++ unit tests** (doctest, header-only, no GPU): progress-line format, downscale
+  schedule, SH basis counts, budget heuristic, and a PLY-header round-trip that
+  guards the `--resume` step-comment prefix. `ctest` target, default ON.
+- Testability refactor: pure shared logic moved to `core/include/cli_support.hpp`
+  and `core/include/ply_header.hpp` (single tested source for CLI + model + loaders).
+- **`scripts/build.sh`** — robust Release/Debug build with a Metal-toolchain
+  preflight, runs the unit tests, prints artifacts.
+- **`docs/`** — user getting-started, dev building/testing + internals +
+  profile-driven optimization roadmap (with cited 3DGS research), and a dated
+  benchmark ledger. **`gsplata_integration.md`** documents the now-satisfied trainer
+  contract.
+
+**Fixes**
+- **`--resume` lost its step**: the writer emitted `comment msplat v<step>` but the
+  reader parsed a stale prefix, so resuming restarted the LR/densification schedule
+  from 1. Reader and writer now share the prefix (unit-test guarded).
+- Tightened the PLY magic check to require a leading `ply` token.
+- **PLY loader validates the header vertex count against file size** before
+  allocating, so a corrupt/truncated/hostile header is rejected with a clear error
+  instead of attempting a huge allocation.
+
+**Validated on Mac16,1 (MacBook Pro M4, 16 GB)** — the constrained target machine:
+garden 7K (`-d 1`, default progressive schedule) trains end-to-end in **174 s at
+4.86 GB resident** (black bg 24.98 / magenta 24.95 PSNR — refactor is non-regressing;
+the two backgrounds are within noise). Matching the README command exactly
+(`--num-downscales 0`, full-res throughout) reproduces **25.67 / 0.7835** vs the
+v1.1.3 README's 25.68 / 0.783 — i.e. **no quality regression** from the v1.2 work.
+
 ## v1.1.3 — Fused kernels + pre-allocated tile bins
 
 - **Fused SH backward into Adam optimizer** — spherical harmonics gradients are now

@@ -98,6 +98,27 @@ pip install msplat[cli]
 msplat-train path/to/dataset -n 7000 --eval
 ```
 
+The standalone C++ binary (`./build/msplat`, or bundled in a pipeline) is built for
+automation — see [`docs/`](docs/) and `man docs/msplat.1`:
+
+```bash
+# Quality presets (explicit flags override the preset):
+msplat path/to/scene --preset draft        # 7000 iters, half-res, ≤1M splats
+msplat path/to/scene --preset production    # 100000 iters, ≤6M splats
+
+# Pipeline use: streaming machine-readable progress, bounded memory, black bg:
+msplat path/to/scene --preset balanced --progress-format jsonl --max-splats 3000000 -o out.ply
+# {"step":1000,"total":30000,"splats":289114,"loss":0.0543,"ms_per_step":10.7}
+# ...
+# Done: 30000 iters, 2.1M Gaussians, PSNR 27.3, wrote /abs/out.ply
+```
+
+Progress lines stream line-buffered even when piped; `SIGINT`/`SIGTERM` save a
+partial `*_interrupted.ply` and exit 130/143; exit codes are deterministic
+(0 ok · 3 load · 5 write). Defaults to a **black** background (`--debug-bg` for the
+magenta debug view). Full reference: `man docs/msplat.1`. Pipeline integration
+contract: [`gsplata_integration.md`](gsplata_integration.md).
+
 ### Swift
 
 Requires Xcode and CMake (`brew install cmake`).
@@ -136,9 +157,22 @@ let img = trainer.renderFromPose(camToWorld: pose)
 ### C++ CLI
 
 ```bash
+./scripts/build.sh                  # Release build + Metal-toolchain check + unit tests
+./build/msplat path/to/dataset -n 7000 --eval
+```
+
+Or directly with CMake:
+
+```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
-./build/msplat path/to/dataset -n 7000 --eval
+ctest --test-dir build            # C++ unit tests (doctest)
+```
+
+First-time Metal toolchain (recent Xcode ships it as a separate component):
+
+```bash
+xcodebuild -downloadComponent MetalToolchain
 ```
 
 ### Build from source

@@ -45,3 +45,17 @@ cameras.json
 
 # Demo
 demo/.build/
+datasets/db
+datasets/tandt
+datasets/mipnerf360/bicycle
+datasets/mipnerf360/bonsai
+datasets/mipnerf360/counter
+datasets/mipnerf360/kitchen
+datasets/mipnerf360/room
+datasets/mipnerf360/stump
+datasets/mipnerf360/garden/images_*
+datasets/mipnerf360/garden/poses_bounds.npy
+datasets/*.txt
+memory/
+tested_outputs/
+gsplata_integration.md

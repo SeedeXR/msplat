@@ -453,6 +453,15 @@ struct FusedTensorCache {
 };
 static FusedTensorCache g_tcache;
 
+// Reads the most recently completed iteration's accumulated loss and normalizes
+// it the same way msplat_train_step does. Only valid right AFTER msplat_gpu_sync()
+// (loss_sum is blit-zeroed at the start of each train step, then accumulated by the
+// loss kernel, so a sync-free read races with the zero-fill — see CLI progress).
+float msplat_read_loss(int img_height, int img_width) {
+    if (!g_tcache.loss_sum.defined() || img_height <= 0 || img_width <= 0) return 0.0f;
+    return *g_tcache.loss_sum.data<float>() / (float)(img_height * img_width);
+}
+
 void cleanup_msplat_metal() {
     g_tcache = FusedTensorCache{};
 }

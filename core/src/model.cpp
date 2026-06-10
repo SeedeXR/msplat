@@ -1,24 +1,20 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <random>
 #include "model.hpp"
 #include "kdtree_tensor.hpp"
 #include "msplat.hpp"
 #include "loaders.hpp"
+#include "cli_support.hpp"
 
 namespace fs = std::filesystem;
 
 static const double C0 = 0.28209479177387814;
 
 int numShBases(int degree){
-    switch(degree){
-        case 0: return 1;
-        case 1: return 4;
-        case 2: return 9;
-        case 3: return 16;
-        default: return 25;
-    }
+    return msplat::numShBasesForDegree(degree);
 }
 
 // Metrics on CPU MTensor data
@@ -229,8 +225,7 @@ void Model::ensureCapacity(int needed){
 }
 
 int Model::getDownscaleFactor(int step) {
-    int remaining = numDownscales - step / resolutionSchedule;
-    return 1 << std::max(remaining, 0);
+    return msplat::downscaleFactorForStep(step, numDownscales, resolutionSchedule);
 }
 
 void Model::afterTrain(int step){
@@ -242,7 +237,14 @@ void Model::afterTrain(int step){
 
         if (doDensification){
             int numPointsBefore = num_active;
-            ensureCapacity(3 * num_active);  // worst case: every gaussian splits
+
+            // --max-splats hard cap: at/above the cap we still run the densify pass
+            // (so pruning/culling continues to reclaim dead gaussians) but disable
+            // all growth by raising the split/clone gradient threshold out of reach.
+            // This bounds peak unified-memory on shared machines without a kernel change.
+            bool atCap = (maxSplats > 0 && num_active >= maxSplats);
+            float effGradThresh = atCap ? std::numeric_limits<float>::max() : densifyGradThresh;
+            ensureCapacity(atCap ? num_active : 3 * num_active);  // worst case: every gaussian splits
 
             // Fill random samples for splits (CPU randn, shared memory)
             {
@@ -259,7 +261,7 @@ void Model::afterTrain(int step){
 
             int new_count = msplat_densify(
                 num_active, buf_capacity,
-                densifyGradThresh, densifySizeThresh, splitScreenSize, check_screen,
+                effGradThresh, densifySizeThresh, splitScreenSize, check_screen,
                 0.1f, 0.5f, 0.15f, checkHuge ? 1 : 0,
                 xysGradNorm, visCounts, max2DSize, half_max_dim,
                 means_buf, scales_buf, quats_buf,
@@ -274,7 +276,8 @@ void Model::afterTrain(int step){
 
             num_active = new_count;
             refreshViews();
-            std::cout << "Densified: " << numPointsBefore << " -> " << num_active << " gaussians" << std::endl;
+            if (!quiet)
+                std::cout << "Densified: " << numPointsBefore << " -> " << num_active << " gaussians" << std::endl;
         }
 
         if (step < stopSplitAt && step % resetInterval == refineEvery){
@@ -286,7 +289,7 @@ void Model::afterTrain(int step){
 
             adam_exp_avg[5].zero();
             adam_exp_avg_sq[5].zero();
-            fprintf(stderr, "Opacity reset at step %d\n", step);
+            if (!quiet) fprintf(stderr, "Opacity reset at step %d\n", step);
         }
 
         xysGradNorm.reset();
@@ -594,4 +597,5 @@ void Model::fullIteration(Camera& cam, int step, MTensor &gt, float ssimWeight){
         visCounts, xysGradNorm, max2DSize, invMaxDim);
 
     radii = r;
+    lastLoss = loss;   // surfaced for progress reporting; read sync-free (lagged ~1 iter)
 }

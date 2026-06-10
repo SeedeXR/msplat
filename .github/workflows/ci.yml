@@ -44,7 +44,7 @@ jobs:
 
       - name: Build
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DMSPLAT_BUILD_TESTS=ON
           cmake --build build -j
 
       - name: Verify outputs
@@ -52,6 +52,22 @@ jobs:
           test -f build/msplat
           test -f build/libmsplat_core.a
           test -f build/default.metallib
+
+      - name: C++ unit tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Man-page coverage (every CLI option is documented)
+        run: |
+          # roff escapes hyphens as "\-"; strip backslashes before matching.
+          man_plain=$(sed 's/\\//g' docs/msplat.1)
+          missing=0
+          for opt in $(./build/msplat --help | grep -oE '\-\-[a-z][a-z0-9-]+' | sort -u); do
+            if ! grep -qF -- "$opt" <<<"$man_plain"; then
+              echo "::error::CLI option $opt is missing from docs/msplat.1"
+              missing=1
+            fi
+          done
+          test "$missing" -eq 0
 
       - uses: actions/upload-artifact@v4
         with:
