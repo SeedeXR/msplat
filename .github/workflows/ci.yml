@@ -35,6 +35,8 @@ jobs:
     needs: version-check
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true   # fetch the garden dataset for the piped smoke test
 
       - name: Cache CMake deps
         uses: actions/cache@v4
@@ -55,6 +57,18 @@ jobs:
 
       - name: C++ unit tests
         run: ctest --test-dir build --output-on-failure
+
+      - name: Piped CLI smoke (off-TTY progress + PLY output)
+        run: |
+          SCENE=datasets/mipnerf360/garden
+          if [ ! -f "$SCENE/sparse/0/cameras.bin" ]; then
+            echo "garden dataset not present (LFS) — skipping piped smoke"; exit 0
+          fi
+          # Piped (no TTY): assert jsonl progress streams, exit 0, PLY written.
+          out=$(./build/msplat "$SCENE" -n 30 -d 8 --progress-format jsonl -o /tmp/smoke.ply | tee /dev/stderr)
+          echo "$out" | grep -q '"step":30' || { echo "::error::no jsonl progress line"; exit 1; }
+          test -s /tmp/smoke.ply || { echo "::error::no PLY written"; exit 1; }
+          echo "piped smoke OK"
 
       - name: Man-page coverage (every CLI option is documented)
         run: |

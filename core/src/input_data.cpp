@@ -1,6 +1,7 @@
 #include "input_data.hpp"
 #include "loaders.hpp"
 #include "msplat.hpp"
+#include "camera_math.hpp"
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <fstream>
@@ -20,9 +21,10 @@ void Camera::loadImage(float downscaleFactor) {
 
     // If actual image dimensions differ from metadata, rescale intrinsics
     if (width > 0 && height > 0 && (raw.width != width || raw.height != height)) {
-        float sx = (float)raw.width / (float)width;
-        float sy = (float)raw.height / (float)height;
-        fx *= sx; fy *= sy; cx *= sx; cy *= sy;
+        // COLMAP intrinsics are for the SfM resolution; images may be downscaled
+        // (e.g. Tanks&Temples). Rescale to the actual image res (unit-tested helper).
+        msplat::CamIntrinsics r = msplat::rescaleIntrinsics({fx, fy, cx, cy}, width, height, raw.width, raw.height);
+        fx = r.fx; fy = r.fy; cx = r.cx; cy = r.cy;
         width = raw.width; height = raw.height;
     } else if (width == 0 || height == 0) {
         width = raw.width; height = raw.height;

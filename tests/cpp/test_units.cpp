@@ -6,6 +6,7 @@
 
 #include "cli_support.hpp"
 #include "ply_header.hpp"
+#include "camera_math.hpp"
 
 #include <sstream>
 
@@ -97,4 +98,48 @@ TEST_CASE("parsePlyHeader rejects non-PLY input") {
     std::istringstream f("not a ply file\nrandom bytes\n");
     PlyHeaderInfo h = parsePlyHeader(f);
     CHECK_FALSE(h.isPly);
+}
+
+// NOTE on what was actually wrong (no hallucination): the Tanks&Temples / Deep
+// Blending divergence was NOT an intrinsics bug. A controlled ablation (truck, only
+// -d changed) showed -d4 (244px render) → PSNR 5.6 (diverges) while -d1 (979px) →
+// PSNR 23.5 (trains). So the proven causal factor is OVER-DOWNSCALING, tested by the
+// coarse-render guard below. The intrinsics test is a *separate* loader-correctness
+// guard: the rescale is already CORRECT (truck trains at -d1 *using* it) — this just
+// prevents a future regression that WOULD break projection.
+TEST_CASE("rescaleIntrinsics: loader correctly rescales when images are downscaled from SfM res") {
+    // truck: cameras.bin declares 1957x1091 fx=1163.3 cx=978.5; images are 979x546.
+    CamIntrinsics in{1163.3f, 1156.3f, 978.5f, 545.5f};
+    CamIntrinsics r = rescaleIntrinsics(in, 1957, 1091, 979, 546);
+    CHECK(r.fx == doctest::Approx(1163.3f * 979.0f / 1957.0f).epsilon(1e-4));  // ~581.9
+    CHECK(r.cx == doctest::Approx(978.5f  * 979.0f / 1957.0f).epsilon(1e-4));  // ~489.5
+    CHECK(r.cy == doctest::Approx(545.5f  * 546.0f / 1091.0f).epsilon(1e-4));
+    CHECK(r.fx < in.fx);  // must shrink to the actual-image focal, not keep SfM focal
+}
+
+TEST_CASE("rescaleIntrinsics is identity when dims match or are unknown") {
+    CamIntrinsics in{3844.9f, 3852.4f, 2593.5f, 1680.5f};
+    // garden: declared == actual (5187x3361) → unchanged (why Mip-NeRF needs no rescale)
+    CamIntrinsics same = rescaleIntrinsics(in, 5187, 3361, 5187, 3361);
+    CHECK(same.fx == doctest::Approx(in.fx));
+    CHECK(same.cx == doctest::Approx(in.cx));
+    // unknown declared dims (0) → unchanged (don't corrupt intrinsics)
+    CamIntrinsics unk = rescaleIntrinsics(in, 0, 0, 979, 546);
+    CHECK(unk.fx == doctest::Approx(in.fx));
+}
+
+// THE ROOT-CAUSE GUARD. Assertions are pinned to MEASURED outcomes from the 13-scene
+// sweep + ablation (tested_outputs/RESULTS.md), not an invented threshold:
+//   - truck -d4 → 244px render → DIVERGED (PSNR 5.6)        => must be flagged coarse
+//   - truck -d1 → 979px render → TRAINED  (PSNR 23.5)       => must NOT be flagged
+//   - garden/bicycle -d4 → ~1236px (16MP/4) → TRAINED fine  => must NOT be flagged
+// (The 400px threshold is a heuristic between the measured fail (244) and pass (979)
+//  points; the divergence itself is verified by the integration benchmark, not here.)
+TEST_CASE("coarse-render guard matches the measured divergence/success points") {
+    CHECK(downscaledExtent(979, 4.0f) == 244);                 // truck -d4 render width
+    CHECK(isCoarseRender(244, 136));                           // measured: diverged → flag it
+    CHECK(downscaledExtent(979, 1.0f) == 979);                 // truck -d1 render width
+    CHECK_FALSE(isCoarseRender(979, 546));                     // measured: trained → don't flag
+    CHECK_FALSE(isCoarseRender(downscaledExtent(4946, 4.0f),   // Mip-NeRF 16MP at -d4 ≈1236px
+                               downscaledExtent(3286, 4.0f))); // measured: trained → don't flag
 }

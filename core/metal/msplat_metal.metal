@@ -1679,6 +1679,7 @@ kernel void fused_adam_kernel(
     if (tid >= n) return;
 
     float g = grads[tid];
+    g = isfinite(g) ? g : 0.0f;   // stability guard: NaN/Inf grad → 0 (see adam_update_element)
     float m = fma(beta1, exp_avg[tid], (1.0f - beta1) * g);
     float v = fma(beta2, exp_avg_sq[tid], (1.0f - beta2) * g * g);
 
@@ -1792,6 +1793,10 @@ inline void adam_update_element(
     device float& param, device float& ea, device float& eas,
     float grad, float step_size, float beta1, float beta2, float bc2_sqrt, float eps
 ) {
+    // Stability guard: a non-finite gradient (NaN/Inf from an upstream divergence)
+    // would permanently poison this parameter and spread. Treat it as zero so the
+    // param/moments stay finite. No-op on healthy scenes (their grads are finite).
+    grad = isfinite(grad) ? grad : 0.0f;
     float m = fma(beta1, ea, (1.0f - beta1) * grad);
     float v = fma(beta2, eas, (1.0f - beta2) * grad * grad);
     param -= step_size * m / (sqrt(v) / bc2_sqrt + eps);

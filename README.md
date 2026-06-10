@@ -193,6 +193,50 @@ cd swift && swift build
 
 Requires macOS 14+, Apple Silicon. No external dependencies.
 
+## Datasets
+
+Training scenes live in a Hugging Face dataset, not in this repo:
+**[alexmkwizu/gaussian_training_datasets](https://huggingface.co/datasets/alexmkwizu/gaussian_training_datasets)**
+(Mip-NeRF 360, Tanks & Temples, Deep Blending — COLMAP layout). A small `garden`
+scene is included in-repo for quickstart/CI.
+
+Create a `datasets/` folder and download everything from Hugging Face:
+
+```bash
+pip install -U "huggingface_hub[cli]"
+huggingface-cli download alexmkwizu/gaussian_training_datasets \
+    --repo-type dataset --local-dir datasets
+# → datasets/mipnerf360/<scene>/, datasets/tandt/<scene>/, datasets/db/<scene>/
+```
+
+Grab a single scene instead of everything:
+
+```bash
+huggingface-cli download alexmkwizu/gaussian_training_datasets \
+    --repo-type dataset --include "tandt/truck/*" --local-dir datasets
+msplat datasets/tandt/truck -n 7000 --eval        # small images → train at native -d 1
+```
+
+> **Resolution matters.** Pick `--downscale-factor` by the *native* image size,
+> aiming for a ~1 MP render. Mip-NeRF 360 ships ~16 MP images → use `-d 4`;
+> Tanks & Temples / Deep Blending ship ~1 MP images → use `-d 1`. The CLI warns if
+> the render is too small (over-downscaling small images destabilizes training).
+
+Everything under `datasets/` except the bundled `garden` is git-ignored — datasets
+are cached locally and pulled from Hugging Face, never committed to this repo.
+
+### Adding a new dataset (push to Hugging Face)
+
+Put the scene under `datasets/<group>/<scene>/` (COLMAP `sparse/0/` + `images/`),
+then upload it to the dataset repo (needs write access — `huggingface-cli login`):
+
+```bash
+huggingface-cli upload alexmkwizu/gaussian_training_datasets \
+    datasets/tandt/mynewscene tandt/mynewscene --repo-type dataset
+```
+
+Do **not** `git add` datasets into this repo — they belong on Hugging Face.
+
 ## Benchmarks
 
 mipnerf360, M4 Max. msplat runs 7K iterations with no downscales:

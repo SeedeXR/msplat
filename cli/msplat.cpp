@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <csignal>
+#include <climits>
 #include <atomic>
 #include <iostream>
 #include <iomanip>
@@ -16,6 +17,7 @@
 #include "msplat.hpp"
 #include "bindings.h"
 #include "cli_support.hpp"
+#include "camera_math.hpp"
 
 namespace fs = std::filesystem;
 
@@ -186,6 +188,19 @@ int main(int argc, char *argv[]) {
 
         for (auto &cam : inputData.cameras)
             cam.loadImage(downScaleFactor);
+
+        // Over-downscale guard: tiny render resolutions destabilize training (the
+        // optimizer diverges, not just lower quality — seen on small-image datasets
+        // like Tanks&Temples at -d4 → 244px). Warn and suggest a smaller -d.
+        if (!inputData.cameras.empty()) {
+            int minLong = INT_MAX;
+            for (auto &cam : inputData.cameras)
+                minLong = std::min(minLong, std::max(cam.width, cam.height));
+            if (msplat::isCoarseRender(minLong, 0))
+                std::cerr << "warning: render resolution is only ~" << minLong << "px on the long side"
+                          << " (after -d " << downScaleFactor << "). Training may be unstable at this size; "
+                          << "try a smaller --downscale-factor (these images are already small)." << std::endl;
+        }
 
         std::vector<Camera> cams;
         std::vector<Camera> testCams;

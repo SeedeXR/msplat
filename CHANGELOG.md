@@ -60,6 +60,18 @@ lacked. No change to the training math — the kernels are byte-for-byte v1.1.3.
   allocating, so a corrupt/truncated/hostile header is rejected with a clear error
   instead of attempting a huge allocation.
 
+**Robustness (training stability)**
+- **Coarse-render warning**: training small-image datasets at an aggressive
+  `--downscale-factor` (e.g. Tanks&Temples 979px at `-d4` → 244px render) destabilizes
+  the optimizer and collapses to an empty render. The CLI now warns when the render
+  long-side is < 400px and suggests a smaller `-d`. (`camera_math.hpp`, unit-tested.)
+- **NaN/Inf gradient guard** in the Adam updates (`adam_update_element` +
+  `fused_adam_kernel`): a non-finite gradient is zeroed so it can't poison a
+  parameter and propagate. Safety net (no effect on healthy scenes).
+- Verified + unit-tested the COLMAP intrinsics rescale (declared SfM resolution vs
+  actual downscaled images) — it was already correct.
+- Extended the C++ unit suite to 11 cases (intrinsics rescale, coarse-render guard).
+
 **Validated on Mac16,1 (MacBook Pro M4, 16 GB)** — the constrained target machine:
 garden 7K (`-d 1`, default progressive schedule) trains end-to-end in **174 s at
 4.86 GB resident** (black bg 24.98 / magenta 24.95 PSNR — refactor is non-regressing;

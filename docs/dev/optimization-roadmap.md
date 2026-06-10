@@ -55,27 +55,25 @@ count, or double-buffer and reuse, to cut transient allocation and refine latenc
   stages are <3% each; not worth the regression risk.
 - **Radix vs bitonic sort:** sort+pack is ~3%; leave the tile-local bitonic.
 
-## ⚠️ TOP PRIORITY — training stability on non-Mip-NeRF scenes (M4.0, found 2026-06-10)
+## M4.0 — over-downscale instability on small-image datasets (found + fixed 2026-06-10)
 
-A 13-scene sweep (see `tested_outputs/RESULTS.md`) showed msplat trains **all 7
-Mip-NeRF 360 scenes well (PSNR 24–30)** but **diverges on all 4 Tanks&Temples /
-Deep Blending scenes (PSNR 4–6)**. Ablations on `truck` prove it is **not** the
-loader, densification, or opacity reset — it is a **pure optimizer/numerical
-divergence**: healthy for ~1000–1500 iters, then parameters (almost certainly
-gaussian **scales**) explode → covariance `inf`/`nan` → splats vanish → render
-empty. Real phone captures (gsplata's input) will likely hit this. **This gates
-quality work on any non-Mip-NeRF scene and is the #1 thing to fix.**
+A 13-scene sweep (`tested_outputs/RESULTS.md`) at a uniform `-d4` showed all 7
+Mip-NeRF scenes fine (PSNR 24–30) but all 4 Tanks&Temples/Deep Blending at PSNR 4–6.
+**Root cause (controlled ablation, only `-d` changed): over-downscaling.** Those
+datasets ship ~979px images; `-d4` renders at 244px (early progressive steps ~61px)
+and the optimizer destabilizes. At native `-d1` all 4 train well (truck 23.5,
+drjohnson/playroom ~28). The `loss=nan` first observed was a *late symptom*; the
+initial "scale explosion" guess was overturned by the `-d1` recovery.
 
-Fixes (validate against the 7 good scenes so they don't regress):
-1. **NaN/Inf guard** in the fused Adam + projection: `if (!isfinite(g)) g = 0;`
-   (reference 3DGS/gsplat have this; msplat lacks it). Stops propagation.
-2. **Scale clamp**: bound `exp(scale)` to a scene-extent-relative max so covariance
-   can't blow up — the most likely true fix.
-3. **Gradient clipping** + a **scale/opacity regularizer** (3DGS-MCMC uses ≈0.01).
-4. Check `autoScaleAndCenter` + fixed LRs (means 1.6e-4 / scale 5e-3) vs non-Mip-NeRF
-   scene extents; consider scene-relative LRs.
-Confirmation experiment: add guard+clamp behind a flag, rerun the truck ablation,
-expect PSNR → ~18–22 with the 7 Mip-NeRF scenes unchanged.
+Shipped this session: **coarse-render warning** (`camera_math.hpp::isCoarseRender`,
+CLI warns < 400px long side, unit-tested) + **NaN/Inf guard** in Adam (safety net;
+makes outputs finite but does not by itself rescue an over-downscaled run).
+
+Deeper (future, needs multi-scene validation): msplat should be *stable* (just
+lower quality) at coarse res like reference 3DGS — candidate hardening is a scale
+clamp / gradient clip / scale-reg (3DGS-MCMC ≈0.01). Practical guidance until then:
+pick `-d` by native resolution (target ~1 MP render), not a fixed factor; gsplata
+should do the same.
 
 ## Quality (M4) — close the garden SSIM gap, fewer splats
 

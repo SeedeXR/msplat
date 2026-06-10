@@ -4,6 +4,7 @@ Metal-native 3D Gaussian Splatting trainer for Apple Silicon.
 
 ## For users
 - [Getting started](user/getting-started.md) — install, build, train, dataset formats, presets.
+- [Datasets](datasets.md) — download training scenes from Hugging Face, per-dataset `-d` guidance, how to push new datasets.
 - [CLI reference](msplat.1) — the man page (`man docs/msplat.1`); every flag, exit codes, env vars.
 
 ## For developers

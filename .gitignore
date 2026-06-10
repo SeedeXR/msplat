@@ -1,4 +1,4 @@
-# Build artifacts
+# ── Build & generated artifacts ──
 build/
 *.o
 *.a
@@ -6,8 +6,16 @@ build/
 *.dylib
 *.air
 *.metallib
+compile_commands.json
+.cache/
+*.dSYM/
+*.xcresult/
+ResultBundle_*
+*.log
+*.tmp
+*.incremental
 
-# Python
+# ── Python ──
 __pycache__/
 *.pyc
 *.pyo
@@ -16,46 +24,40 @@ dist/
 .venv/
 uv.lock
 
-# Swift
+# ── Swift / Node ──
 swift/.build/
 MsplatCore.xcframework/
 swift/Sources/Msplat/Resources/
+demo/.build/
+node_modules/
 
-# IDE
+# ── Editor / OS ──
 .vscode/
 .idea/
 *.swp
 .DS_Store
 
-# Spec (internal)
+# ── Internal / local-only (not pushed) ──
 SPEC.md
+memory/
+gsplata_integration.md
 
-# Datasets (keep garden for CI, ignore others)
+# ── Training outputs ──
+*.splat
+*.msplat
+*.ply
+cameras.json
+/output/
+tested_outputs/
+
+# ── Datasets: keep only a minimal `garden` for CI; ignore all other scenes ──
+# (datasets/*/ already covers db, tandt, lund, every mipnerf360 scene, etc. —
+#  no need to list them individually.)
 datasets/*/
 !datasets/mipnerf360/
 datasets/mipnerf360/*/
 !datasets/mipnerf360/garden/
-
-# Training outputs
-*.splat
-*.msplat
-cameras.json
-/output/
-*.ply
-
-# Demo
-demo/.build/
-datasets/db
-datasets/tandt
-datasets/mipnerf360/bicycle
-datasets/mipnerf360/bonsai
-datasets/mipnerf360/counter
-datasets/mipnerf360/kitchen
-datasets/mipnerf360/room
-datasets/mipnerf360/stump
+# within the kept garden, drop the bulky pre-downscaled images + COLMAP extras
 datasets/mipnerf360/garden/images_*
 datasets/mipnerf360/garden/poses_bounds.npy
 datasets/*.txt
-memory/
-tested_outputs/
-gsplata_integration.md

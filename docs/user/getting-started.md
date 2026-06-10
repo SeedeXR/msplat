@@ -39,6 +39,21 @@ step=1000/7000 splats=289114 loss=0.054313 ms/it=10.71
 Done: 7000 iters, 755235 Gaussians, PSNR 24.98, wrote /abs/path/splat.ply
 ```
 
+## Getting training scenes
+
+A small `garden` scene ships in-repo. For the full set (Mip-NeRF 360, Tanks &
+Temples, Deep Blending), create a `datasets/` folder and download from Hugging Face:
+
+```bash
+pip install -U "huggingface_hub[cli]"
+huggingface-cli download alexmkwizu/gaussian_training_datasets \
+    --repo-type dataset --local-dir datasets
+```
+
+See **[datasets.md](../datasets.md)** for single-scene downloads, the per-dataset
+`--downscale-factor` guidance (small-image datasets train at `-d 1`, not `-d 4`),
+and how to push your own scenes to the Hugging Face repo.
+
 ## Dataset formats (auto-detected)
 
 | Format | What msplat looks for |
